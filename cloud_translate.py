@@ -4,6 +4,8 @@ import os
 import os.path
 import pyrax
 import pyrax.exceptions
+import shlex
+import subprocess
 import sys
 
 from optparse import OptionParser
@@ -18,6 +20,11 @@ RAW_STASH = "NeedTranscode"
 
 WORKING_DIR = "/tmp"
 
+TRANSCODE_CMD = "avconv -y -i %s -threads 0 -s %s -r 30000/1001 -preset veryslow -vcodec libx264 -acodec copy %s"
+
+TRANSCODE_RESOLUTIONS = {'1080p': '1920x1080', 
+                         '720p': '1280x720',
+                         'mobile': '320x240',}
 
 def getopts():
     parser = OptionParser()
@@ -58,10 +65,44 @@ def get_files_to_transcode():
 
     return manifest
 
+def transcode_manifest(manifest):
+    for f in manifest:
+        fullname = os.path.join(WORKING_DIR, str(f))
+        fext = fullname.split('.')[-1]
+        fbase = fullname[:-4]
+        for t in TRANSCODE_RESOLUTIONS:
+            ofname = os.path.join(WORKING_DIR, fbase + '-' + t + '.' + fext)
+            cmd = shlex.split(TRANSCODE_CMD % (fullname, TRANSCODE_RESOLUTIONS[t],
+                                               ofname))
+            subprocess.call(cmd)
+
+def upload_transcoded_and_cleanup(manifest):
+    for f in manifest:
+        fullname = os.path.join(WORKING_DIR, str(f))
+        fext = fullname.split('.')[-1]
+        fbase = fullname[:-4]
+       
+        cont = cf.create_container(manifest[f])
+        for t in TRANSCODE_RESOLUTIONS:
+            tn = f[:-4] + '-' + t + '.' + fext
+            fn = os.path.join(WORKING_DIR, tn)
+            print "Uploading %s to %s" % (fn, manifest[f])
+            cf.upload_file(cont, fn, obj_name=tn, content_type="video/H264")
+            obj = cont.get_object(tn)
+            if get_md5(fn) != obj.etag:
+                print "UPLOAD MD5 MISMATCH!!"
+                sys.exit(1)
+            os.unlink(fn)
+            
+        os.unlink(fullname)
 
 if __name__ == '__main__':
     o, a = getopts()
     print o
     print a
 
-    print get_files_to_transcode()
+    manifest = get_files_to_transcode()
+
+    transcode_manifest(manifest)
+
+    upload_transcoded_and_cleanup(manifest)
