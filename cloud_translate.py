@@ -21,7 +21,7 @@ RAW_STASH = "NeedTranscode"
 WORKING_DIR = "/tmp"
 
 TRANSCODE_CMD = ("avconv -y -i %s -threads 0 -s %s -r 30000/1001" +
-                 "-preset veryslow -vcodec libx264 -acodec copy %s")
+                 " -preset veryslow -vcodec libx264 -acodec copy %s")
 
 TRANSCODE_RESOLUTIONS = {'1080p': '1920x1080',
                          '720p': '1280x720',
@@ -64,7 +64,9 @@ def get_files_to_transcode():
             print "MD5 MISMATH THE WORLD IS OVER"
         else:
             print "Verified md5"
-        manifest[o] = m['x-object-meta-finished-container-name']
+        manifest[o] = {'container': m['x-object-meta-finished-container-name'],
+                       'status': False,
+                      }
 
     return manifest
 
@@ -81,26 +83,26 @@ def transcode_manifest(manifest):
                                                ofname))
             subprocess.call(cmd)
 
-
 def upload_transcoded_and_cleanup(manifest):
     for f in manifest:
         fullname = os.path.join(WORKING_DIR, str(f))
         fext = fullname.split('.')[-1]
         fbase = fullname[:-4]
 
-        cont = cf.create_container(manifest[f])
+        cont = cf.create_container(manifest[f]['container'])
         for t in TRANSCODE_RESOLUTIONS:
-            tn = t + '/' + fbase + '.' + fext
+            tn = f[:-4] + '-' + t + '.' + fext
             fn = os.path.join(WORKING_DIR, tn)
             un = f[:-4] + '/' + t + '.' + fext
-            print "Uploading %s to %s" % (fn, manifest[f])
+            print "Uploading %s to %s" % (fn, manifest[f]['container'])
             cf.upload_file(cont, fn, obj_name=un, content_type="video/H264")
-            obj = cont.get_object(tn)
+            obj = cont.get_object(un)
             if get_md5(fn) != obj.etag:
                 print "UPLOAD MD5 MISMATCH!!"
                 sys.exit(1)
             os.unlink(fn)
 
+        manifest[f]['status'] = True
         os.unlink(fullname)
 
 if __name__ == '__main__':
@@ -109,7 +111,7 @@ if __name__ == '__main__':
     print a
 
     manifest = get_files_to_transcode()
-
+    print manifest
     transcode_manifest(manifest)
-
     upload_transcoded_and_cleanup(manifest)
+    print manifest
