@@ -92,8 +92,9 @@ def upload_transcoded_and_cleanup(manifest):
         for t in TRANSCODE_RESOLUTIONS:
             tn = t + '/' + fbase + '.' + fext
             fn = os.path.join(WORKING_DIR, tn)
+            un = f[:-4] + '/' + t + '.' + fext
             print "Uploading %s to %s" % (fn, manifest[f])
-            cf.upload_file(cont, fn, obj_name=tn, content_type="video/H264")
+            cf.upload_file(cont, fn, obj_name=un, content_type="video/H264")
             obj = cont.get_object(tn)
             if get_md5(fn) != obj.etag:
                 print "UPLOAD MD5 MISMATCH!!"
